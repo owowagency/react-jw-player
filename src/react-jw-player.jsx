@@ -1,5 +1,4 @@
 import React, { Component } from 'react';
-import isEqual from 'react-fast-compare';
 
 import createEventHandlers from './create-event-handlers';
 import getCurriedOnLoad from './helpers/get-curried-on-load';
@@ -8,9 +7,12 @@ import initialize from './helpers/initialize';
 import installPlayerScript from './helpers/install-player-script';
 import removeJWPlayerInstance from './helpers/remove-jw-player-instance';
 import setJWPlayerDefaults from './helpers/set-jw-player-defaults';
+import requiresReInitialization from './helpers/requires-re-initialization';
 
 import defaultProps from './default-props';
 import propTypes from './player-prop-types';
+import updatableProps from './updatable-props';
+import getUpdatedPlayerOpts from './helpers/get-updated-player-opts';
 
 const displayName = 'ReactJWPlayer';
 
@@ -60,18 +62,30 @@ class ReactJWPlayer extends Component {
     }
   }
   shouldComponentUpdate(nextProps) {
-    const hasFileChanged = this.props.file !== nextProps.file;
-    const hasPlaylistChanged = !isEqual(this.props.playlist, nextProps.playlist);
-
-    return hasFileChanged || hasPlaylistChanged;
+    const updatablePropChanged = updatableProps.some(name => this.props[name] !== nextProps[name]);
+    return updatablePropChanged || requiresReInitialization(this.props, nextProps);
   }
-  componentDidUpdate() {
+  componentDidUpdate(prevProps) {
     if (window.jwplayer && window.jwplayer(this.videoRef)) {
-      this._initialize();
+      if (requiresReInitialization(prevProps, this.props)) {
+        this._initialize();
+      } else {
+        this._updatePlayer(prevProps);
+      }
     }
   }
   componentWillUnmount() {
     removeJWPlayerInstance(this.videoRef, window);
+  }
+  _updatePlayer(prevProps) {
+    const player = window.jwplayer(this.videoRef);
+    if (!player) {
+      // this player ref may have been destroyed already
+      return;
+    }
+
+    const playerOpts = getUpdatedPlayerOpts(prevProps, this.props);
+    player.setConfig(playerOpts);
   }
   _initialize() {
     const { playerId, useMultiplePlayerScripts } = this.props;
@@ -84,9 +98,9 @@ class ReactJWPlayer extends Component {
     const player = window.jwplayer(this.videoRef);
     if (!player) {
       // this player ref may have been destroyed already
-      return; 
+      return;
     }
-    
+
     const playerOpts = getPlayerOpts(this.props);
 
     initialize({ component, player, playerOpts });
